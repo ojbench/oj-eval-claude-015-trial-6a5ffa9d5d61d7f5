@@ -9,17 +9,11 @@ using namespace std;
 
 const char* DATA_FILE = "storage.dat";
 
-#pragma pack(push, 1)
 struct Record {
     char index[65];
     int value;
-    char active;
-
-    Record() : value(0), active(1) {
-        memset(index, 0, sizeof(index));
-    }
+    int active;  // Changed from char to int for better alignment
 };
-#pragma pack(pop)
 
 bool recordExists(const string& idx, int val) {
     ifstream file(DATA_FILE, ios::binary);
@@ -43,6 +37,7 @@ void insert(const string& index, int value) {
     if (!file.is_open()) return;
 
     Record rec;
+    memset(&rec, 0, sizeof(Record));
     strncpy(rec.index, index.c_str(), 64);
     rec.value = value;
     rec.active = 1;
@@ -56,10 +51,15 @@ void deleteEntry(const string& index, int value) {
     if (!file.is_open()) return;
 
     Record rec;
-    while (file.read((char*)&rec, sizeof(Record))) {
+    streampos pos;
+
+    while (true) {
+        pos = file.tellg();
+        if (!file.read((char*)&rec, sizeof(Record))) break;
+
         if (rec.active && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
             rec.active = 0;
-            file.seekp(-static_cast<streamoff>(sizeof(Record)), ios::cur);
+            file.seekp(pos);
             file.write((char*)&rec, sizeof(Record));
             file.close();
             return;
