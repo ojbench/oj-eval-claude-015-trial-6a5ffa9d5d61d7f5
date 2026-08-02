@@ -9,20 +9,22 @@ using namespace std;
 
 const char* DATA_FILE = "data.db";
 
+#pragma pack(push, 1)
 struct Record {
     char index[65];  // 64 bytes + null terminator
     int value;
-    bool deleted;
+    char deleted;    // Using char instead of bool for consistent size
 
-    Record() : value(0), deleted(false) {
+    Record() : value(0), deleted(0) {
         memset(index, 0, sizeof(index));
     }
 
-    Record(const string& idx, int val) : value(val), deleted(false) {
+    Record(const string& idx, int val) : value(val), deleted(0) {
         memset(index, 0, sizeof(index));
         strncpy(index, idx.c_str(), 64);
     }
 };
+#pragma pack(pop)
 
 void insert(const string& index, int value) {
     // Check if this exact entry already exists
@@ -30,7 +32,7 @@ void insert(const string& index, int value) {
     if (infile.is_open()) {
         Record rec;
         while (infile.read((char*)&rec, sizeof(Record))) {
-            if (!rec.deleted && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
+            if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
                 infile.close();
                 return;  // Entry already exists, don't insert duplicate
             }
@@ -40,9 +42,11 @@ void insert(const string& index, int value) {
 
     // Append new record
     ofstream outfile(DATA_FILE, ios::binary | ios::app);
-    Record rec(index, value);
-    outfile.write((char*)&rec, sizeof(Record));
-    outfile.close();
+    if (outfile.is_open()) {
+        Record rec(index, value);
+        outfile.write((char*)&rec, sizeof(Record));
+        outfile.close();
+    }
 }
 
 void deleteEntry(const string& index, int value) {
@@ -53,11 +57,16 @@ void deleteEntry(const string& index, int value) {
     }
 
     Record rec;
-    while (file.read((char*)&rec, sizeof(Record))) {
-        if (!rec.deleted && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
+    streampos pos;
+    while (true) {
+        pos = file.tellg();
+        if (!file.read((char*)&rec, sizeof(Record))) {
+            break;
+        }
+        if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
             // Mark as deleted
-            rec.deleted = true;
-            file.seekp(-static_cast<long>(sizeof(Record)), ios::cur);
+            rec.deleted = 1;
+            file.seekp(pos);
             file.write((char*)&rec, sizeof(Record));
             file.close();
             return;  // Only delete one matching entry
@@ -74,7 +83,7 @@ void find(const string& index) {
     if (infile.is_open()) {
         Record rec;
         while (infile.read((char*)&rec, sizeof(Record))) {
-            if (!rec.deleted && strcmp(rec.index, index.c_str()) == 0) {
+            if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0) {
                 values.push_back(rec.value);
             }
         }
