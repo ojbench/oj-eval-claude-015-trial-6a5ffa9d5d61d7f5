@@ -3,88 +3,117 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <cstring>
+#include <sstream>
 
 using namespace std;
 
 const char* DATA_FILE = "data.db";
 
-#pragma pack(push, 1)
 struct Record {
-    char index[65];  // 64 bytes + null terminator
+    string index;
     int value;
-    char deleted;    // Using char instead of bool for consistent size
-
-    Record() : value(0), deleted(0) {
-        memset(index, 0, sizeof(index));
-    }
-
-    Record(const string& idx, int val) : value(val), deleted(0) {
-        memset(index, 0, sizeof(index));
-        strncpy(index, idx.c_str(), 64);
-    }
+    bool deleted;
 };
-#pragma pack(pop)
 
 void insert(const string& index, int value) {
     // Check if this exact entry already exists
-    ifstream infile(DATA_FILE, ios::binary);
+    ifstream infile(DATA_FILE);
     if (infile.is_open()) {
-        Record rec;
-        while (infile.read((char*)&rec, sizeof(Record))) {
-            if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
-                infile.close();
-                return;  // Entry already exists, don't insert duplicate
+        string line;
+        while (getline(infile, line)) {
+            if (line.empty()) continue;
+
+            istringstream iss(line);
+            string idx;
+            int val;
+            int del;
+
+            if (iss >> del >> idx >> val) {
+                if (del == 0 && idx == index && val == value) {
+                    infile.close();
+                    return;  // Entry already exists
+                }
             }
         }
         infile.close();
     }
 
     // Append new record
-    ofstream outfile(DATA_FILE, ios::binary | ios::app);
+    ofstream outfile(DATA_FILE, ios::app);
     if (outfile.is_open()) {
-        Record rec(index, value);
-        outfile.write((char*)&rec, sizeof(Record));
+        outfile << "0 " << index << " " << value << "\n";
         outfile.close();
     }
 }
 
 void deleteEntry(const string& index, int value) {
-    // Open file for reading and writing
-    fstream file(DATA_FILE, ios::binary | ios::in | ios::out);
-    if (!file.is_open()) {
-        return;  // File doesn't exist, nothing to delete
+    ifstream infile(DATA_FILE);
+    if (!infile.is_open()) {
+        return;  // File doesn't exist
     }
 
-    Record rec;
-    streampos pos;
-    while (true) {
-        pos = file.tellg();
-        if (!file.read((char*)&rec, sizeof(Record))) {
-            break;
-        }
-        if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
-            // Mark as deleted
-            rec.deleted = 1;
-            file.seekp(pos);
-            file.write((char*)&rec, sizeof(Record));
-            file.close();
-            return;  // Only delete one matching entry
-        }
+    const char* TEMP_FILE = "data.tmp";
+    ofstream outfile(TEMP_FILE);
+    if (!outfile.is_open()) {
+        infile.close();
+        return;
     }
 
-    file.close();
+    string line;
+    bool found = false;
+
+    while (getline(infile, line)) {
+        if (line.empty()) {
+            outfile << line << "\n";
+            continue;
+        }
+
+        istringstream iss(line);
+        string idx;
+        int val;
+        int del;
+
+        if (iss >> del >> idx >> val) {
+            if (!found && del == 0 && idx == index && val == value) {
+                // Mark as deleted
+                outfile << "1 " << idx << " " << val << "\n";
+                found = true;
+            } else {
+                outfile << line << "\n";
+            }
+        } else {
+            outfile << line << "\n";
+        }
+    }
+    infile.close();
+    outfile.close();
+
+    if (found) {
+        remove(DATA_FILE);
+        rename(TEMP_FILE, DATA_FILE);
+    } else {
+        remove(TEMP_FILE);
+    }
 }
 
 void find(const string& index) {
     vector<int> values;
 
-    ifstream infile(DATA_FILE, ios::binary);
+    ifstream infile(DATA_FILE);
     if (infile.is_open()) {
-        Record rec;
-        while (infile.read((char*)&rec, sizeof(Record))) {
-            if (rec.deleted == 0 && strcmp(rec.index, index.c_str()) == 0) {
-                values.push_back(rec.value);
+        string line;
+        while (getline(infile, line)) {
+            if (line.empty()) continue;
+
+            istringstream iss(line);
+            string idx;
+            int val;
+            int del;
+
+            if (iss >> del >> idx >> val) {
+                if (del == 0 && idx == index) {
+                    values.push_back(val);
+                }
             }
         }
         infile.close();
@@ -103,6 +132,9 @@ void find(const string& index) {
 }
 
 int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
     int n;
     cin >> n;
 
