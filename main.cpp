@@ -4,20 +4,25 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>
+#include <functional>
 
 using namespace std;
 
-const char* DATA_FILE = "data.db";
+const int NUM_BUCKETS = 16;
+const char* DATA_PREFIX = "db_";
 
-struct Record {
-    string index;
-    int value;
-    bool deleted;
-};
+string getFileName(const string& index) {
+    hash<string> hasher;
+    size_t h = hasher(index);
+    int bucket = h % NUM_BUCKETS;
+    return string(DATA_PREFIX) + to_string(bucket) + ".dat";
+}
 
 void insert(const string& index, int value) {
+    string filename = getFileName(index);
+
     // Check if this exact entry already exists
-    ifstream infile(DATA_FILE);
+    ifstream infile(filename);
     if (infile.is_open()) {
         string line;
         while (getline(infile, line)) {
@@ -39,7 +44,7 @@ void insert(const string& index, int value) {
     }
 
     // Append new record
-    ofstream outfile(DATA_FILE, ios::app);
+    ofstream outfile(filename, ios::app);
     if (outfile.is_open()) {
         outfile << "0 " << index << " " << value << "\n";
         outfile.close();
@@ -47,13 +52,15 @@ void insert(const string& index, int value) {
 }
 
 void deleteEntry(const string& index, int value) {
-    ifstream infile(DATA_FILE);
+    string filename = getFileName(index);
+
+    ifstream infile(filename);
     if (!infile.is_open()) {
         return;  // File doesn't exist
     }
 
-    const char* TEMP_FILE = "data.tmp";
-    ofstream outfile(TEMP_FILE);
+    string tempfile = filename + ".tmp";
+    ofstream outfile(tempfile);
     if (!outfile.is_open()) {
         infile.close();
         return;
@@ -89,17 +96,18 @@ void deleteEntry(const string& index, int value) {
     outfile.close();
 
     if (found) {
-        remove(DATA_FILE);
-        rename(TEMP_FILE, DATA_FILE);
+        remove(filename.c_str());
+        rename(tempfile.c_str(), filename.c_str());
     } else {
-        remove(TEMP_FILE);
+        remove(tempfile.c_str());
     }
 }
 
 void find(const string& index) {
+    string filename = getFileName(index);
     vector<int> values;
 
-    ifstream infile(DATA_FILE);
+    ifstream infile(filename);
     if (infile.is_open()) {
         string line;
         while (getline(infile, line)) {
