@@ -1,4 +1,0 @@
-3
-insert Test 100
-insert Test 200
-find Test
