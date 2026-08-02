@@ -4,7 +4,6 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>
-#include <functional>
 
 using namespace std;
 
@@ -12,8 +11,10 @@ const int NUM_BUCKETS = 16;
 const char* DATA_PREFIX = "db_";
 
 string getFileName(const string& index) {
-    hash<string> hasher;
-    size_t h = hasher(index);
+    unsigned int h = 0;
+    for (char c : index) {
+        h = h * 31 + (unsigned char)c;
+    }
     int bucket = h % NUM_BUCKETS;
     return string(DATA_PREFIX) + to_string(bucket) + ".dat";
 }
