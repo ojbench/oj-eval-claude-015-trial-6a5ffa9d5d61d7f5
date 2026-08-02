@@ -3,8 +3,5 @@ CMakeCache.txt
 cmake_install.cmake
 Makefile
 code
-data.db
-data.tmp
-db_*.dat
-db_*.dat.tmp
+storage.dat
 *.o

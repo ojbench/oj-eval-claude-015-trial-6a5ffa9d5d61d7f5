@@ -1,0 +1,11 @@
+10
+insert Test 100
+insert Test 200
+insert Test 150
+find Test
+delete Test 200
+find Test
+delete Test 100
+delete Test 150
+find Test
+delete Test 999

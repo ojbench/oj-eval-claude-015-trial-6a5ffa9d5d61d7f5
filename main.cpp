@@ -3,140 +3,94 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <sstream>
+#include <cstring>
 
 using namespace std;
 
-const int NUM_BUCKETS = 16;
-const char* DATA_PREFIX = "db_";
+const char* DATA_FILE = "storage.dat";
 
-string getFileName(const string& index) {
-    unsigned int h = 0;
-    for (char c : index) {
-        h = h * 31 + (unsigned char)c;
+#pragma pack(push, 1)
+struct Record {
+    char index[65];
+    int value;
+    char active;
+
+    Record() : value(0), active(1) {
+        memset(index, 0, sizeof(index));
     }
-    int bucket = h % NUM_BUCKETS;
-    return string(DATA_PREFIX) + to_string(bucket) + ".dat";
+};
+#pragma pack(pop)
+
+bool recordExists(const string& idx, int val) {
+    ifstream file(DATA_FILE, ios::binary);
+    if (!file.is_open()) return false;
+
+    Record rec;
+    while (file.read((char*)&rec, sizeof(Record))) {
+        if (rec.active && strcmp(rec.index, idx.c_str()) == 0 && rec.value == val) {
+            file.close();
+            return true;
+        }
+    }
+    file.close();
+    return false;
 }
 
 void insert(const string& index, int value) {
-    string filename = getFileName(index);
+    if (recordExists(index, value)) return;
 
-    // Check if this exact entry already exists
-    ifstream infile(filename);
-    if (infile.is_open()) {
-        string line;
-        while (getline(infile, line)) {
-            if (line.empty()) continue;
+    ofstream file(DATA_FILE, ios::binary | ios::app);
+    if (!file.is_open()) return;
 
-            istringstream iss(line);
-            string idx;
-            int val;
-            int del;
+    Record rec;
+    strncpy(rec.index, index.c_str(), 64);
+    rec.value = value;
+    rec.active = 1;
 
-            if (iss >> del >> idx >> val) {
-                if (del == 0 && idx == index && val == value) {
-                    infile.close();
-                    return;  // Entry already exists
-                }
-            }
-        }
-        infile.close();
-    }
-
-    // Append new record
-    ofstream outfile(filename, ios::app);
-    if (outfile.is_open()) {
-        outfile << "0 " << index << " " << value << "\n";
-        outfile.close();
-    }
+    file.write((char*)&rec, sizeof(Record));
+    file.close();
 }
 
 void deleteEntry(const string& index, int value) {
-    string filename = getFileName(index);
+    fstream file(DATA_FILE, ios::binary | ios::in | ios::out);
+    if (!file.is_open()) return;
 
-    ifstream infile(filename);
-    if (!infile.is_open()) {
-        return;  // File doesn't exist
-    }
-
-    string tempfile = filename + ".tmp";
-    ofstream outfile(tempfile);
-    if (!outfile.is_open()) {
-        infile.close();
-        return;
-    }
-
-    string line;
-    bool found = false;
-
-    while (getline(infile, line)) {
-        if (line.empty()) {
-            outfile << line << "\n";
-            continue;
-        }
-
-        istringstream iss(line);
-        string idx;
-        int val;
-        int del;
-
-        if (iss >> del >> idx >> val) {
-            if (!found && del == 0 && idx == index && val == value) {
-                // Mark as deleted
-                outfile << "1 " << idx << " " << val << "\n";
-                found = true;
-            } else {
-                outfile << line << "\n";
-            }
-        } else {
-            outfile << line << "\n";
+    Record rec;
+    while (file.read((char*)&rec, sizeof(Record))) {
+        if (rec.active && strcmp(rec.index, index.c_str()) == 0 && rec.value == value) {
+            rec.active = 0;
+            file.seekp(-static_cast<streamoff>(sizeof(Record)), ios::cur);
+            file.write((char*)&rec, sizeof(Record));
+            file.close();
+            return;
         }
     }
-    infile.close();
-    outfile.close();
-
-    if (found) {
-        remove(filename.c_str());
-        rename(tempfile.c_str(), filename.c_str());
-    } else {
-        remove(tempfile.c_str());
-    }
+    file.close();
 }
 
 void find(const string& index) {
-    string filename = getFileName(index);
     vector<int> values;
 
-    ifstream infile(filename);
-    if (infile.is_open()) {
-        string line;
-        while (getline(infile, line)) {
-            if (line.empty()) continue;
-
-            istringstream iss(line);
-            string idx;
-            int val;
-            int del;
-
-            if (iss >> del >> idx >> val) {
-                if (del == 0 && idx == index) {
-                    values.push_back(val);
-                }
+    ifstream file(DATA_FILE, ios::binary);
+    if (file.is_open()) {
+        Record rec;
+        while (file.read((char*)&rec, sizeof(Record))) {
+            if (rec.active && strcmp(rec.index, index.c_str()) == 0) {
+                values.push_back(rec.value);
             }
         }
-        infile.close();
+        file.close();
     }
 
     if (values.empty()) {
-        cout << "null" << endl;
+        cout << "null\n";
     } else {
         sort(values.begin(), values.end());
         for (size_t i = 0; i < values.size(); i++) {
             if (i > 0) cout << " ";
             cout << values[i];
         }
-        cout << endl;
+        cout << "\n";
     }
 }
 
@@ -147,24 +101,24 @@ int main() {
     int n;
     cin >> n;
 
-    string command;
     for (int i = 0; i < n; i++) {
-        cin >> command;
+        string cmd;
+        cin >> cmd;
 
-        if (command == "insert") {
-            string index;
-            int value;
-            cin >> index >> value;
-            insert(index, value);
-        } else if (command == "delete") {
-            string index;
-            int value;
-            cin >> index >> value;
-            deleteEntry(index, value);
-        } else if (command == "find") {
-            string index;
-            cin >> index;
-            find(index);
+        if (cmd == "insert") {
+            string idx;
+            int val;
+            cin >> idx >> val;
+            insert(idx, val);
+        } else if (cmd == "delete") {
+            string idx;
+            int val;
+            cin >> idx >> val;
+            deleteEntry(idx, val);
+        } else if (cmd == "find") {
+            string idx;
+            cin >> idx;
+            find(idx);
         }
     }
 
